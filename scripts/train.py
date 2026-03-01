@@ -9,16 +9,29 @@ from drishti.evaluation.metrics import calculate_accuracy
 from drishti.ew_layer.battlefield_noise import apply_battlefield_degradation
 
 
-def train_one_epoch(model, loader, criterion, optimizer, device):
+from drishti.attacks.fgsm import fgsm_attack
+
+
+def train_one_epoch(model, loader, criterion, optimizer, device, epsilon=0.03):
     model.train()
     running_loss = 0.0
 
     for images, labels in loader:
-        images, labels = images.to(device), labels.to(device)
+        images = images.to(device)
+        labels = labels.to(device)
 
+        # --- Clean Forward ---
         optimizer.zero_grad()
         outputs = model(images)
-        loss = criterion(outputs, labels)
+        loss_clean = criterion(outputs, labels)
+
+        # --- Adversarial Forward ---
+        adv_images = fgsm_attack(model, images.clone(), labels, epsilon=epsilon)
+        outputs_adv = model(adv_images)
+        loss_adv = criterion(outputs_adv, labels)
+
+        # --- Combined Loss ---
+        loss = (loss_clean + loss_adv) / 2
         loss.backward()
         optimizer.step()
 
@@ -65,19 +78,23 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    print("Training...")
-    loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+    epochs = 5
+    best_acc = 0.0
 
-    clean_acc = calculate_accuracy(model, val_loader, device)
-    noisy_acc = evaluate_with_noise(model, val_loader, device)
+    for epoch in range(epochs):
+        loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        clean_acc = calculate_accuracy(model, val_loader, device)
 
-    robustness = noisy_acc / clean_acc if clean_acc > 0 else 0
+        print(f"Epoch [{epoch+1}/{epochs}]")
+        print(f"Loss: {loss:.4f}")
+        print(f"Validation Accuracy: {clean_acc:.4f}")
 
-    print(f"Loss: {loss:.4f}")
-    print(f"Clean Accuracy: {clean_acc:.4f}")
-    print(f"Noisy Accuracy: {noisy_acc:.4f}")
-    print(f"Robustness Score: {robustness:.4f}")
+        if clean_acc > best_acc:
+           best_acc = clean_acc
+           torch.save(model.state_dict(), "best_model.pth")
+           print("Best model saved.")
 
+    print(f"Best Validation Accuracy: {best_acc:.4f}")
 
 if __name__ == "__main__":
     main()
