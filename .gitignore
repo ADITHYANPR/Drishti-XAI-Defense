@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+original_output.jpg
+degraded_output.jpg
+__pycache__/
