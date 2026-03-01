@@ -209,3 +209,4 @@ __marimo__/
 original_output.jpg
 degraded_output.jpg
 __pycache__/
+*.pth
